@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
+
+const ReportModal = dynamic(() => import('./components/ReportModal'), { ssr: false });
 import { Bar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -40,8 +43,17 @@ const MEASURE_COLORS = {
 
 // --- Components ---
 
-function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSummary }) {
+function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSummary, onGenerateReportClick }) {
   let lastClientName = null; // To keep track of the previous client name
+  const scrollContainerRef = useRef(null);
+
+  useEffect(() => {
+    const scrollPosition = sessionStorage.getItem('scrollPosition');
+    if (scrollPosition && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = parseInt(scrollPosition);
+      sessionStorage.removeItem('scrollPosition');
+    }
+  }, [summaryData]); // summaryDataが更新されたときに実行
 
   return (
     <div>
@@ -52,9 +64,15 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
           onChange={(e) => setMonth(e.target.value)} 
           className="border border-gray-300 p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 ease-in-out"
         />
-        <button onClick={fetchSummary} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md shadow-md transition duration-200 ease-in-out">表示</button>
+        <button onClick={fetchSummary} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md shadow-md transition duration-200 ease-in-out cursor-pointer">表示</button>
+        <button 
+          onClick={onGenerateReportClick} 
+          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md shadow-md transition duration-200 ease-in-out text-sm cursor-pointer"
+        >
+          レポート生成
+        </button>
       </div>
-      <div className="overflow-x-auto h-[calc(100vh-200px)] overflow-y-auto">
+      <div ref={scrollContainerRef} className="overflow-x-auto h-[calc(100vh-200px)] overflow-y-auto">
         <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm border-separate border-spacing-0">
           <thead>
             <tr className="bg-gray-100 border-b border-gray-200">
@@ -87,7 +105,7 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
                   <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.data_deletion_post_rate !== null ? `${row.data_deletion_post_rate}%` : '-'}</td>
                   <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.data_deletion_diff !== null ? `${row.data_deletion_diff}%` : '-'}</td>
                   <td className="px-4 py-3 border border-gray-200">
-                    {(row.measure_name === 'トーク改善' || row.measure_name === '両方実施') && (
+                    {(row.pre_fix_talk_list_name || row.post_fix_talk_list_name) && (
                       <div className="whitespace-nowrap overflow-hidden text-ellipsis">
                         <span>修正前: {row.pre_fix_talk_list_name}</span><br/>
                         <span>修正後: {row.post_fix_talk_list_name}</span>
@@ -95,7 +113,7 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
                     )}
                   </td>
                   <td className="px-4 py-3 border border-gray-200">
-                    {(row.measure_name === '不要データ削除' || row.measure_name === '両方実施') && (
+                    {row.deleted_list_name && (
                       <div className="whitespace-nowrap overflow-hidden text-ellipsis">
                         <span>使用中リスト名: {row.deleted_list_name}</span>
                       </div>
@@ -182,22 +200,70 @@ function ClientDetail({ client, month, onBack, measureType }) {
               }
             }
           }
-        }
+        },
+        totalAppointments: data.totalAppointments,
+        totalCalls: data.totalCalls,
+        appointmentRate: data.appointmentRate,
+        scriptAggregates: data.scriptAggregates,
+        listAggregates: data.listAggregates,
       })
     }
     fetchDetails()
   }, [client, month, measureType])
 
   return (
-    <div>
-      <button onClick={onBack} className="mb-4 bg-gray-200 px-4 py-2 rounded">戻る</button>
+    <div className="flex flex-col flex-grow">
+      <button onClick={onBack} className="mb-4 bg-gray-200 px-2 py-1 rounded text-sm inline-block">戻る</button>
       <h2 className="text-xl font-bold mb-2">{client} - アポ率推移</h2>
-      <div style={{ width: '100%', height: '400px' }}>
-        {chartData && <Bar data={chartData} options={chartData.options} />}
-      </div>
+      {chartData && (
+        <div className="flex flex-grow">
+          <div className="w-2/3 h-full">
+            <Bar data={chartData} options={chartData.options} />
+          </div>
+          <div className="w-1/3 ml-4 p-4 border rounded-lg shadow-md bg-gray-50 overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-2">期間合計</h3>
+            <p><strong>合計アポイント数:</strong> {chartData.totalAppointments}</p>
+            <p><strong>合計架電数:</strong> {chartData.totalCalls}</p>
+            <p><strong>アポ率:</strong> {chartData.appointmentRate}%</p>
+
+            {(measureType === 'トーク改善' || measureType === '両方実施') && chartData.scriptAggregates && Object.keys(chartData.scriptAggregates).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <h4 className="text-md font-semibold mb-2">スクリプト別集計</h4>
+                {Object.entries(chartData.scriptAggregates).map(([scriptName, metrics]) => (
+                  <div key={scriptName} className="mb-2 p-2 border border-gray-200 rounded-md bg-white">
+                    <p><strong>{scriptName}:</strong></p>
+                    <p className="ml-2">アポイント数: {metrics.totalAppointments}</p>
+                    <p className="ml-2">架電数: {metrics.totalCalls}</p>
+                    <p className="ml-2">アポ率: {metrics.appointmentRate}%</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(measureType === '不要データ削除' || measureType === '両方実施') && chartData.listAggregates && Object.keys(chartData.listAggregates).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <h4 className="text-md font-semibold mb-2">リスト別集計</h4>
+                {Object.entries(chartData.listAggregates).map(([listName, metrics]) => (
+                  <div key={listName} className="mb-2 p-2 border border-gray-200 rounded-md bg-white">
+                    <p><strong>{listName}:</strong></p>
+                    <p className="ml-2">アポイント数: {metrics.totalAppointments}</p>
+                    <p className="ml-2">架電数: {metrics.totalCalls}</p>
+                    <p className="ml-2">アポ率: {metrics.appointmentRate}%</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+
+
+// --- Components ---
+
 
 // --- Main Page ---
 
@@ -206,6 +272,45 @@ export default function Home() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM
   const [summaryData, setSummaryData] = useState([]); // Moved from MonthlySummary
+  const [reportContent, setReportContent] = useState(''); // レポート内容を保持
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [showChat, setShowChat] = useState(false); // チャットボットの表示状態
+  const [messages, setMessages] = useState([]); // チャットメッセージ
+  const [inputMessage, setInputMessage] = useState(''); // 入力中のメッセージ
+
+  const handleSendMessage = async () => {
+    if (inputMessage.trim() === '') return;
+
+    const newMessage = { sender: 'user', text: inputMessage };
+    setMessages((prevMessages) => [...prevMessages, newMessage]);
+    setInputMessage('');
+
+    try {
+      // n8n Webhook URL (ここに実際のWebhook URLを設定してください)
+      const n8nWebhookUrl = 'https://n8n-project-u47471.vm.elestio.app/webhook-test/92abcedb-f77d-4cf6-b90a-2c73463416dd'; 
+
+      const response = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ question: inputMessage }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: result.answer }]);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to get chat response from n8n:', errorData.error);
+        setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: `エラー: ${errorData.error}` }]);
+      }
+    } catch (error) {
+      console.error('Error sending message to n8n:', error);
+      setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: `エラー: ${error.message}` }]);
+    }
+  };
 
   const fetchSummary = async () => { // Moved from MonthlySummary
     if (!month) return;
@@ -232,6 +337,46 @@ export default function Home() {
     fetchSummary();
   }, [month]);
 
+  const handleGenerateReport = async () => {
+    setIsReportLoading(true);
+    setReportContent('');
+    // 現在表示されているサマリーデータと、必要であれば詳細データを収集
+    const dataToSend = {
+      summaryData: summaryData,
+      // clientDetailsData: ... // 必要であれば、ここに詳細データを追加
+    };
+
+    try {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setReportContent(result.report);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to generate report:', errorData.error);
+        setReportContent(`レポート生成に失敗しました: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      setReportContent(`レポート生成中にエラーが発生しました: ${error.message}`);
+    } finally {
+      setIsReportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isReportModalOpen) {
+      handleGenerateReport();
+    }
+  }, [isReportModalOpen]);
+
   const handleClientSelect = (clientName, measureName) => {
     sessionStorage.setItem('scrollPosition', window.scrollY); // スクロール位置を保存
     setSelectedClient({ clientName, measureName })
@@ -241,18 +386,13 @@ export default function Home() {
   const handleBackToSummary = () => {
     setSelectedClient(null)
     setCurrentView('summary')
-    // スクロール位置を復元
-    const scrollPosition = sessionStorage.getItem('scrollPosition');
-    if (scrollPosition) {
-      window.scrollTo(0, parseInt(scrollPosition));
-      sessionStorage.removeItem('scrollPosition'); // 復元したら削除
-    }
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center py-12 px-4 bg-gray-50 text-gray-800">
-      <div className="w-full max-w-7xl bg-white shadow-lg rounded-lg p-8">
+    <main className="flex min-h-screen flex-col items-center py-12 px-4 bg-purple-800 text-gray-800 relative">
+      <div className="w-full max-w-full bg-white shadow-lg rounded-lg p-8 flex flex-col flex-grow">
         <h1 className="text-3xl font-extrabold text-gray-900 mb-8 text-center">施策効果測定ダッシュボード</h1>
+        
         {currentView === 'summary' ? (
           <MonthlySummary 
             onClientSelect={handleClientSelect} 
@@ -260,11 +400,76 @@ export default function Home() {
             setMonth={setMonth} 
             summaryData={summaryData} // Pass as prop
             fetchSummary={fetchSummary} // Pass as prop
+            onGenerateReportClick={() => setIsReportModalOpen(true)} // Pass the function
           />
         ) : (
           <ClientDetail client={selectedClient.clientName} month={month} onBack={handleBackToSummary} measureType={selectedClient.measureName} />
         )}
       </div>
+      <ReportModal 
+        isOpen={isReportModalOpen} 
+        onClose={() => setIsReportModalOpen(false)}
+        title="生成されたレポート"
+        reportContent={reportContent}
+      >
+        {isReportLoading ? (
+          <div className="flex justify-center items-48">
+            <p className="text-lg">レポートを生成中です...</p>
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap">
+            {reportContent}
+          </div>
+        )}
+      </ReportModal>
+      {/* Chatbot UI */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <button 
+          onClick={() => setShowChat(!showChat)} 
+          className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </button>
+        {showChat && (
+          <div className="bg-white rounded-lg shadow-xl w-80 h-96 flex flex-col mt-2">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="font-bold">AIチャットボット</h3>
+              <button onClick={() => setShowChat(false)} className="text-gray-500 hover:text-gray-700">&times;</button>
+            </div>
+            <div className="flex-1 p-4 overflow-y-auto">
+              {messages.map((msg, index) => (
+                <div key={index} className={`mb-2 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
+                  <span className={`inline-block p-2 rounded-lg ${msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>
+                    {msg.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex">
+              <input 
+                type="text" 
+                className="flex-1 border border-gray-300 rounded-l-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="質問を入力..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={(e) => { if (e.key === 'Enter') handleSendMessage(); }}
+              />
+              <button 
+                onClick={handleSendMessage} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-r-md"
+              >
+                送信
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </main>
   )
 }
+
+
+
+

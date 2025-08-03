@@ -125,9 +125,48 @@ export async function GET(req: NextRequest) {
             };
         });
 
+        const totalAppointments = dailyData.reduce((sum, cur) => sum + cur.appointment, 0);
+        const totalCalls = dailyData.reduce((sum, cur) => sum + cur.call_count, 0);
+        const appointmentRate = totalCalls > 0 ? ((totalAppointments / totalCalls) * 100).toFixed(2) : '0.00';
+
+        const scriptAggregates = {};
+        Object.keys(aggregatedData.byScript).forEach(scriptName => {
+            let totalScriptCalls = 0;
+            let totalScriptAppointments = 0;
+            Object.keys(aggregatedData.byScript[scriptName]).forEach(date => {
+                totalScriptCalls += aggregatedData.byScript[scriptName][date].totalCalls;
+                totalScriptAppointments += aggregatedData.byScript[scriptName][date].appointments;
+            });
+            scriptAggregates[scriptName] = {
+                totalCalls: totalScriptCalls,
+                totalAppointments: totalScriptAppointments,
+                appointmentRate: totalScriptCalls > 0 ? ((totalScriptAppointments / totalScriptCalls) * 100).toFixed(2) : '0.00'
+            };
+        });
+
+        const listAggregates = {};
+        Object.keys(aggregatedData.byList).forEach(listName => {
+            let totalListCalls = 0;
+            let totalListAppointments = 0;
+            Object.keys(aggregatedData.byList[listName]).forEach(date => {
+                totalListCalls += aggregatedData.byList[listName][date].totalCalls;
+                totalListAppointments += aggregatedData.byList[listName][date].appointments;
+            });
+            listAggregates[listName] = {
+                totalCalls: totalListCalls,
+                totalAppointments: totalListAppointments,
+                appointmentRate: totalListCalls > 0 ? ((totalListAppointments / totalListCalls) * 100).toFixed(2) : '0.00'
+            };
+        });
+
         const response = {
             chartDataSets,
             revisions,
+            totalAppointments,
+            totalCalls,
+            appointmentRate,
+            scriptAggregates,
+            listAggregates,
         };
         console.log('Final client-details response:', response);
 
