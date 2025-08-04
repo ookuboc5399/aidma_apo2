@@ -264,6 +264,8 @@ import {
   ChartOptions,
   LegendItem,
   ChartEvent,
+  LineController,   // ← これを追加！
+  BarController,
   ChartDataset
 } from 'chart.js'
 import annotationPlugin from 'chartjs-plugin-annotation'
@@ -281,7 +283,9 @@ ChartJS.register(
   TimeScale,
   PointElement,
   LineElement,
-  annotationPlugin
+  annotationPlugin,
+  LineController,   // ← これを登録！
+  BarController 
 )
 
 interface SummaryData {
