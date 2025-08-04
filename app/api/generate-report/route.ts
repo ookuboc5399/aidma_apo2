@@ -24,6 +24,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ report: generatedReport })
   } catch (error) {
     console.error('Error generating report:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'An unknown error occurred' }, { status: 500 })
   }
 }

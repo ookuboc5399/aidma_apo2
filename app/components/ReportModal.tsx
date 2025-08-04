@@ -2,7 +2,15 @@
 
 import { useRef } from 'react';
 
-function ReportModal({ isOpen, onClose, title, children, reportContent }) {
+interface ReportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  reportContent: string;
+}
+
+function ReportModal({ isOpen, onClose, title, children, reportContent }: ReportModalProps) {
   const reportContentRef = useRef(null);
 
   if (!isOpen) return null;

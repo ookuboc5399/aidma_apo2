@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic'
 
 const ReportModal = dynamic(() => import('./components/ReportModal'), { ssr: false });
@@ -15,7 +16,10 @@ import {
   Legend,
   TimeScale,
   PointElement,
-  LineElement
+  LineElement,
+  ChartOptions,
+  LegendItem,
+  ChartEvent
 } from 'chart.js'
 import annotationPlugin from 'chartjs-plugin-annotation'
 import 'chartjs-adapter-date-fns'
@@ -33,7 +37,22 @@ ChartJS.register(
   annotationPlugin
 )
 
-const MEASURE_COLORS = {
+interface SummaryData {
+  client_name: string;
+  execution_date: string;
+  measure_name: string;
+  talk_improvement_pre_rate: string | null;
+  talk_improvement_post_rate: string | null;
+  talk_improvement_diff: string | null;
+  data_deletion_pre_rate: string | null;
+  data_deletion_post_rate: string | null;
+  data_deletion_diff: string | null;
+  pre_fix_talk_list_name: string | null;
+  post_fix_talk_list_name: string | null;
+  deleted_list_name: string | null;
+}
+
+const MEASURE_COLORS: { [key: string]: string } = {
   'トーク改善': 'rgba(255, 99, 132, 0.8)',
   'スクリプト改善': 'rgba(54, 162, 235, 0.8)',
   '不要データ削除': 'rgba(255, 206, 86, 0.8)',
@@ -43,9 +62,18 @@ const MEASURE_COLORS = {
 
 // --- Components ---
 
-function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSummary, onGenerateReportClick }) {
-  let lastClientName = null; // To keep track of the previous client name
-  const scrollContainerRef = useRef(null);
+interface MonthlySummaryProps {
+  onClientSelect: (clientName: string, measureName: string) => void;
+  month: string;
+  setMonth: (month: string) => void;
+  summaryData: SummaryData[];
+  fetchSummary: () => void;
+  onGenerateReportClick: () => void;
+}
+
+function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSummary, onGenerateReportClick }: MonthlySummaryProps) {
+  let lastClientName: string | null = null; // To keep track of the previous client name
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const scrollPosition = sessionStorage.getItem('scrollPosition');
@@ -129,15 +157,62 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
   );
 }
 
-function ClientDetail({ client, month, onBack, measureType }) {
-  const [chartData, setChartData] = useState(null)
+interface ClientDetailProps {
+  client: string;
+  month: string;
+  onBack: () => void;
+  measureType: string;
+}
+
+interface AggregatesType {
+    [key: string]: {
+        totalCalls: number;
+        totalAppointments: number;
+        appointmentRate: string;
+    };
+}
+
+interface ChartData {
+  labels: string[];
+  datasets: ChartDataSet[];
+  options: ChartOptions<'bar'>; // optionsは複雑なので一旦any
+  totalAppointments: number;
+  totalCalls: number;
+  appointmentRate: string;
+  scriptAggregates: AggregatesType; // scriptAggregatesも一旦any
+  listAggregates: AggregatesType; // listAggregatesも一旦any
+}
+
+interface ChartDataSet {
+    label: string;
+    data: { x: string; y: string }[];
+    borderColor: string;
+    backgroundColor: string;
+    type: 'bar';
+    fill: boolean;
+    hidden?: boolean; // hiddenプロパティはオプション
+}
+
+interface CampaignRevision {
+  id: number;
+  created_at: string;
+  client_name: string;
+  execution_date: string;
+  measure_name: string;
+  pre_fix_talk_list_name: string | null;
+  post_fix_talk_list_name: string | null;
+  deleted_list_name: string | null;
+}
+
+function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps) {
+  const [chartData, setChartData] = useState<ChartData | null>(null)
 
   useEffect(() => {
     const fetchDetails = async () => {
       const response = await fetch(`/api/client-details?client=${client}&month=${month}`)
       const data = await response.json()
       
-      const annotations = data.revisions.map(rev => ({
+      const annotations = data.revisions.map((rev: CampaignRevision) => ({
         type: 'line',
         scaleID: 'x',
         value: new Date(rev.execution_date).setHours(0, 0, 0, 0),
@@ -151,7 +226,7 @@ function ClientDetail({ client, month, onBack, measureType }) {
       }))
 
       // 施策タイプに基づいてデータセットの表示/非表示を初期設定
-      const initialDatasets = data.chartDataSets.map(dataset => {
+      const initialDatasets = data.chartDataSets.map((dataset: ChartDataSet) => {
         if (measureType === '不要データ削除' && dataset.label.startsWith('リスト:')) {
           return { ...dataset, hidden: false }; // 不要データ削除ならリストを表示
         } else if (measureType === 'トーク改善' && dataset.label.startsWith('スクリプト:')) {
@@ -172,7 +247,7 @@ function ClientDetail({ client, month, onBack, measureType }) {
       });
 
       setChartData({
-        labels: Array.from(new Set(data.chartDataSets.flatMap(dataset => dataset.data.map(d => d.x)))).sort(),
+        labels: Array.from(new Set(data.chartDataSets.flatMap((dataset: ChartDataSet) => dataset.data.map(d => d.x)))).sort() as string[],
         datasets: initialDatasets,
         options: {
           plugins: {
@@ -180,8 +255,10 @@ function ClientDetail({ client, month, onBack, measureType }) {
               annotations: annotations
             },
             legend: {
-              onClick: (e, legendItem, legend) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onClick: (e: ChartEvent, legendItem: LegendItem, legend: any) => {
                 const index = legendItem.datasetIndex;
+                if (index === undefined) return;
                 const ci = legend.chart;
                 const meta = ci.getDatasetMeta(index);
 
@@ -265,24 +342,34 @@ function ClientDetail({ client, month, onBack, measureType }) {
 // --- Components ---
 
 
+interface SelectedClient {
+  clientName: string;
+  measureName: string;
+}
+
+interface Message {
+  sender: 'user' | 'bot';
+  text: string;
+}
+
 // --- Main Page ---
 
 export default function Home() {
   const [currentView, setCurrentView] = useState('summary') // 'summary' or 'detail'
-  const [selectedClient, setSelectedClient] = useState(null)
+  const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM
-  const [summaryData, setSummaryData] = useState([]); // Moved from MonthlySummary
+  const [summaryData, setSummaryData] = useState<SummaryData[]>([]); // Moved from MonthlySummary
   const [reportContent, setReportContent] = useState(''); // レポート内容を保持
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [showChat, setShowChat] = useState(false); // チャットボットの表示状態
-  const [messages, setMessages] = useState([]); // チャットメッセージ
+  const [messages, setMessages] = useState<Message[]>([]); // チャットメッセージ
   const [inputMessage, setInputMessage] = useState(''); // 入力中のメッセージ
 
   const handleSendMessage = async () => {
     if (inputMessage.trim() === '') return;
 
-    const newMessage = { sender: 'user', text: inputMessage };
+    const newMessage: Message = { sender: 'user', text: inputMessage };
     setMessages((prevMessages) => [...prevMessages, newMessage]);
     setInputMessage('');
 
@@ -308,17 +395,18 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error sending message to n8n:', error);
-      setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: `エラー: ${error.message}` }]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: `エラー: ${errorMessage}` }]);
     }
   };
 
-  const fetchSummary = async () => { // Moved from MonthlySummary
+  const fetchSummary = useCallback(async () => { // Moved from MonthlySummary
     if (!month) return;
     const response = await fetch(`/api/monthly-summary?month=${month}`);
     const data = await response.json();
     if (response.ok) {
       // Sort data by execution_date first, then by client_name for consistent grouping
-      const sortedData = data.sort((a, b) => {
+      const sortedData = (data as SummaryData[]).sort((a, b) => {
         const dateA = new Date(a.execution_date).getTime();
         const dateB = new Date(b.execution_date).getTime();
         if (dateA !== dateB) {
@@ -328,16 +416,16 @@ export default function Home() {
       });
       setSummaryData(sortedData);
     } else {
-      console.error('Failed to fetch summary data:', data.error);
+      console.error('Failed to fetch summary data:', (data as { error: string }).error);
       setSummaryData([]); // エラー時は空の配列にリセット
     }
-  };
+  }, [month]);
 
   useEffect(() => { // Fetch data when month changes or on initial mount
     fetchSummary();
-  }, [month]);
+  }, [month, fetchSummary]);
 
-  const handleGenerateReport = async () => {
+  const handleGenerateReport = useCallback(async () => {
     setIsReportLoading(true);
     setReportContent('');
     // 現在表示されているサマリーデータと、必要であれば詳細データを収集
@@ -365,20 +453,21 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error generating report:', error);
-      setReportContent(`レポート生成中にエラーが発生しました: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setReportContent(`レポート生成中にエラーが発生しました: ${errorMessage}`);
     } finally {
       setIsReportLoading(false);
     }
-  };
+  }, [summaryData]);
 
   useEffect(() => {
     if (isReportModalOpen) {
       handleGenerateReport();
     }
-  }, [isReportModalOpen]);
+  }, [isReportModalOpen, handleGenerateReport]);
 
-  const handleClientSelect = (clientName, measureName) => {
-    sessionStorage.setItem('scrollPosition', window.scrollY); // スクロール位置を保存
+  const handleClientSelect = (clientName: string, measureName: string) => {
+    sessionStorage.setItem('scrollPosition', String(window.scrollY)); // スクロール位置を保存
     setSelectedClient({ clientName, measureName })
     setCurrentView('detail')
   }
@@ -392,6 +481,16 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center py-12 px-4 bg-purple-800 text-gray-800 relative">
       <div className="w-full max-w-full bg-white shadow-lg rounded-lg p-8 flex flex-col flex-grow">
         <h1 className="text-3xl font-extrabold text-gray-900 mb-8 text-center">施策効果測定ダッシュボード</h1>
+        <button 
+          onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            window.location.href = '/login'; // ログアウト後にログインページへリダイレクト
+          }}
+          className="mb-6 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md shadow-md transition duration-200 ease-in-out"
+        >
+          ログアウト
+        </button>
         
         {currentView === 'summary' ? (
           <MonthlySummary 
@@ -402,9 +501,9 @@ export default function Home() {
             fetchSummary={fetchSummary} // Pass as prop
             onGenerateReportClick={() => setIsReportModalOpen(true)} // Pass the function
           />
-        ) : (
+        ) : selectedClient ? (
           <ClientDetail client={selectedClient.clientName} month={month} onBack={handleBackToSummary} measureType={selectedClient.measureName} />
-        )}
+        ) : null}
       </div>
       <ReportModal 
         isOpen={isReportModalOpen} 

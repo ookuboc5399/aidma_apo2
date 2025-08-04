@@ -6,6 +6,29 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+interface AggregatedDataType {
+    byScript: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
+    byList: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
+}
+
+interface ChartDataSet {
+    label: string;
+    data: { x: string; y: string }[];
+    borderColor: string;
+    backgroundColor: string;
+    type: string;
+    fill: boolean;
+    hidden?: boolean; // hiddenプロパティはオプション
+}
+
+interface AggregatesType {
+    [key: string]: {
+        totalCalls: number;
+        totalAppointments: number;
+        appointmentRate: string;
+    };
+}
+
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = req.nextUrl;
@@ -36,7 +59,7 @@ export async function GET(req: NextRequest) {
         console.log('[client-details] Fetched daily call_results data:', dailyData);
 
         // 日毎にscript_nameとlist_nameごとに集計
-        const aggregatedData = dailyData.reduce((acc, cur) => {
+        const aggregatedData: AggregatedDataType = dailyData.reduce((acc: AggregatedDataType, cur) => {
             const date = cur.operating_date.split('T')[0]; // YYYY-MM-DD
             const scriptName = cur.script_name || '不明_script';
             const listName = cur.list_name || '不明_list';
@@ -64,7 +87,7 @@ export async function GET(req: NextRequest) {
             return acc;
         }, { byScript: {}, byList: {} });
 
-        const chartDataSets = [];
+        const chartDataSets: ChartDataSet[] = [];
 
         // script_nameごとのデータセットを生成
         Object.keys(aggregatedData.byScript).forEach(scriptName => {
@@ -77,7 +100,7 @@ export async function GET(req: NextRequest) {
                 data: dataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
                 backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}20`, // ランダムな色（透過）
-                type: 'line',
+                type: 'bar',
                 fill: false,
             });
         });
@@ -93,7 +116,7 @@ export async function GET(req: NextRequest) {
                 data: dataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
                 backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}20`, // ランダムな色（透過）
-                type: 'line',
+                type: 'bar',
                 fill: false,
                 
             });
@@ -129,7 +152,7 @@ export async function GET(req: NextRequest) {
         const totalCalls = dailyData.reduce((sum, cur) => sum + cur.call_count, 0);
         const appointmentRate = totalCalls > 0 ? ((totalAppointments / totalCalls) * 100).toFixed(2) : '0.00';
 
-        const scriptAggregates = {};
+        const scriptAggregates: AggregatesType = {};
         Object.keys(aggregatedData.byScript).forEach(scriptName => {
             let totalScriptCalls = 0;
             let totalScriptAppointments = 0;
@@ -144,7 +167,7 @@ export async function GET(req: NextRequest) {
             };
         });
 
-        const listAggregates = {};
+        const listAggregates: AggregatesType = {};
         Object.keys(aggregatedData.byList).forEach(listName => {
             let totalListCalls = 0;
             let totalListAppointments = 0;
