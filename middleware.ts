@@ -48,7 +48,14 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  await supabase.auth.getSession()
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // If the user is not logged in and trying to access a protected route, redirect to login
+  if (!session && request.nextUrl.pathname !== '/login' && request.nextUrl.pathname !== '/signup') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
 
   return response
 }
