@@ -6,6 +6,32 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+async function calculateAppointmentRate(client: string, filterValue: string, startDate: string, endDate: string, filterColumn: 'script_name' | 'list_name') {
+    console.log(`[calculateAppointmentRate] Querying call_results for client: ${client}, ${filterColumn}: ${filterValue}, operating_date from ${startDate} to ${endDate}`);
+    const { data, error } = await supabase
+        .from('call_results')
+        .select('call_count, appointment')
+        .eq('client_name', client)
+        .eq(filterColumn, filterValue)
+        .gte('operating_date', startDate)
+        .lt('operating_date', endDate)
+
+    if (error) {
+        console.error('[calculateAppointmentRate] Error fetching call_results:', error);
+        throw error;
+    }
+    console.log('[calculateAppointmentRate] Fetched call_results data:', data);
+
+    const stats = data.reduce((acc, cur) => {
+        acc.totalCalls += cur.call_count;
+        acc.appointments += cur.appointment;
+        return acc;
+    }, { totalCalls: 0, appointments: 0 });
+
+    const rate = stats.totalCalls > 0 ? (stats.appointments / stats.totalCalls) * 100 : 0;
+    return { totalCalls: stats.totalCalls, totalAppointments: stats.appointments, appointmentRate: rate.toFixed(2) };
+}
+
 interface AggregatedDataType {
     byScript: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
     byList: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
@@ -26,6 +52,9 @@ interface AggregatesType {
         totalCalls: number;
         totalAppointments: number;
         appointmentRate: string;
+        execution_date?: string; // 施策実施日を追加
+        preMeasureStats?: { totalCalls: number; totalAppointments: number; appointmentRate: string } | null;
+        postMeasureStats?: { totalCalls: number; totalAppointments: number; appointmentRate: string } | null;
     };
 }
 
@@ -91,41 +120,70 @@ export async function GET(req: NextRequest) {
 
         // script_nameごとのデータセットを生成
         Object.keys(aggregatedData.byScript).forEach(scriptName => {
-            const dataPoints = Object.keys(aggregatedData.byScript[scriptName]).sort().map(date => ({
+            // アポ率データセット (折れ線グラフ)
+            const rateDataPoints = Object.keys(aggregatedData.byScript[scriptName]).sort().map(date => ({
                 x: date,
                 y: (aggregatedData.byScript[scriptName][date].appointments / aggregatedData.byScript[scriptName][date].totalCalls * 100).toFixed(2)
             }));
             chartDataSets.push({
-                label: `スクリプト: ${scriptName}`,
-                data: dataPoints,
+                label: `スクリプト: ${scriptName} (アポ率)`,
+                data: rateDataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
                 backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
-                type: 'bar',
+                type: 'line', // 折れ線グラフ
                 fill: false,
+            });
+
+            // 架電数データセット (棒グラフ)
+            const callCountDataPoints = Object.keys(aggregatedData.byScript[scriptName]).sort().map(date => ({
+                x: date,
+                y: aggregatedData.byScript[scriptName][date].totalCalls.toString() // 架電数を文字列として渡す
+            }));
+            chartDataSets.push({
+                label: `スクリプト: ${scriptName} (架電数)`,
+                data: callCountDataPoints,
+                borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
+                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
+                type: 'bar', // 棒グラフ
+                fill: true, // 棒グラフなので塗りつぶし
             });
         });
 
         // list_nameごとのデータセットを生成
         Object.keys(aggregatedData.byList).forEach(listName => {
-            const dataPoints = Object.keys(aggregatedData.byList[listName]).sort().map(date => ({
+            // アポ率データセット (折れ線グラフ)
+            const rateDataPoints = Object.keys(aggregatedData.byList[listName]).sort().map(date => ({
                 x: date,
                 y: (aggregatedData.byList[listName][date].appointments / aggregatedData.byList[listName][date].totalCalls * 100).toFixed(2)
             }));
             chartDataSets.push({
-                label: `リスト: ${listName}`,
-                data: dataPoints,
+                label: `リスト: ${listName} (アポ率)`,
+                data: rateDataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
                 backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
-                type: 'bar',
+                type: 'line', // 折れ線グラフ
                 fill: false,
-                
+            });
+
+            // 架電数データセット (棒グラフ)
+            const callCountDataPoints = Object.keys(aggregatedData.byList[listName]).sort().map(date => ({
+                x: date,
+                y: aggregatedData.byList[listName][date].totalCalls.toString() // 架電数を文字列として渡す
+            }));
+            chartDataSets.push({
+                label: `リスト: ${listName} (架電数)`,
+                data: callCountDataPoints,
+                borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
+                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
+                type: 'bar', // 棒グラフ
+                fill: true, // 棒グラフなので塗りつぶし
             });
         });
 
         // 2. 期間内の施策情報を取得
         const { data: revisionsData, error: revisionsError } = await supabase
             .from('campaign_revisions')
-            .select('execution_date, pre_fix_talk_list_name, post_fix_talk_list_name, deleted_list_name')
+            .select('execution_date, client_name, pre_fix_talk_list_name, post_fix_talk_list_name, deleted_list_name')
             .eq('client_name', client)
             .gte('execution_date', startDate.toISOString())
             .lt('execution_date', endDate.toISOString());
@@ -133,7 +191,7 @@ export async function GET(req: NextRequest) {
         if (revisionsError) throw revisionsError;
         console.log('Fetched campaign_revisions data:', revisionsData);
 
-        const revisions = revisionsData.map(rev => {
+        const revisions = await Promise.all(revisionsData.map(async rev => {
             let measure_name = 'その他';
             if (rev.pre_fix_talk_list_name && rev.post_fix_talk_list_name) {
                 measure_name = 'トーク改善';
@@ -142,11 +200,62 @@ export async function GET(req: NextRequest) {
             } else if (rev.pre_fix_talk_list_name && rev.post_fix_talk_list_name && rev.deleted_list_name) {
                 measure_name = '両方実施'; // 両方実施の場合
             }
+
+            const executionDate = new Date(rev.execution_date);
+            const monthStartDate = new Date(executionDate.getFullYear(), executionDate.getMonth(), 1);
+            const monthEndDate = new Date(executionDate.getFullYear(), executionDate.getMonth() + 1, 0);
+
+            let preMeasureStats = null;
+            let postMeasureStats = null;
+
+            if (measure_name === 'トーク改善' || measure_name === '両方実施') {
+                // トーク改善の施策前後のアポ率計算
+                // 施策前: 月初から施策実施日の前日まで
+                preMeasureStats = await calculateAppointmentRate(
+                    rev.client_name,
+                    rev.pre_fix_talk_list_name || '',
+                    monthStartDate.toISOString(),
+                    executionDate.toISOString(),
+                    'script_name'
+                );
+                // 施策後: 施策実施日から月末まで
+                postMeasureStats = await calculateAppointmentRate(
+                    rev.client_name,
+                    rev.post_fix_talk_list_name || '',
+                    executionDate.toISOString(),
+                    monthEndDate.toISOString(),
+                    'script_name'
+                );
+            } else if (measure_name === '不要データ削除') {
+                // 不要データ削除の施策前後のアポ率計算
+                // 施策前: 月初から施策実施日の前日まで
+                preMeasureStats = await calculateAppointmentRate(
+                    rev.client_name,
+                    rev.deleted_list_name || '',
+                    monthStartDate.toISOString(),
+                    executionDate.toISOString(),
+                    'list_name'
+                );
+                // 施策後: 施策実施日から月末まで
+                postMeasureStats = await calculateAppointmentRate(
+                    rev.client_name,
+                    rev.deleted_list_name || '',
+                    executionDate.toISOString(),
+                    monthEndDate.toISOString(),
+                    'list_name'
+                );
+            }
+
             return {
                 execution_date: rev.execution_date,
-                measure_name: measure_name
+                measure_name: measure_name,
+                preMeasureStats: preMeasureStats,
+                postMeasureStats: postMeasureStats,
+                pre_fix_talk_list_name: rev.pre_fix_talk_list_name,
+                post_fix_talk_list_name: rev.post_fix_talk_list_name,
+                deleted_list_name: rev.deleted_list_name,
             };
-        });
+        }));
 
         const totalAppointments = dailyData.reduce((sum, cur) => sum + cur.appointment, 0);
         const totalCalls = dailyData.reduce((sum, cur) => sum + cur.call_count, 0);
@@ -160,11 +269,27 @@ export async function GET(req: NextRequest) {
                 totalScriptCalls += aggregatedData.byScript[scriptName][date].totalCalls;
                 totalScriptAppointments += aggregatedData.byScript[scriptName][date].appointments;
             });
+
+            // 施策前後の情報を追加
+            const relatedRevision = revisions.find(rev => 
+                (rev.pre_fix_talk_list_name === scriptName || rev.post_fix_talk_list_name === scriptName)
+            );
+
             scriptAggregates[scriptName] = {
                 totalCalls: totalScriptCalls,
                 totalAppointments: totalScriptAppointments,
-                appointmentRate: totalScriptCalls > 0 ? ((totalScriptAppointments / totalScriptCalls) * 100).toFixed(2) : '0.00'
+                appointmentRate: totalScriptCalls > 0 ? ((totalScriptAppointments / totalScriptCalls) * 100).toFixed(2) : '0.00',
+                execution_date: relatedRevision?.execution_date, // 施策実施日を追加
             };
+
+            if (relatedRevision) {
+                if (relatedRevision.pre_fix_talk_list_name === scriptName) {
+                    scriptAggregates[scriptName].preMeasureStats = relatedRevision.preMeasureStats;
+                }
+                if (relatedRevision.post_fix_talk_list_name === scriptName) {
+                    scriptAggregates[scriptName].postMeasureStats = relatedRevision.postMeasureStats;
+                }
+            }
         });
 
         const listAggregates: AggregatesType = {};
@@ -175,11 +300,23 @@ export async function GET(req: NextRequest) {
                 totalListCalls += aggregatedData.byList[listName][date].totalCalls;
                 totalListAppointments += aggregatedData.byList[listName][date].appointments;
             });
+
+            // 施策前後の情報を追加
+            const relatedRevision = revisions.find(rev => 
+                rev.deleted_list_name === listName
+            );
+
             listAggregates[listName] = {
                 totalCalls: totalListCalls,
                 totalAppointments: totalListAppointments,
-                appointmentRate: totalListCalls > 0 ? ((totalListAppointments / totalListCalls) * 100).toFixed(2) : '0.00'
+                appointmentRate: totalListCalls > 0 ? ((totalListAppointments / totalListCalls) * 100).toFixed(2) : '0.00',
+                execution_date: relatedRevision?.execution_date, // 施策実施日を追加
             };
+
+            if (relatedRevision) {
+                listAggregates[listName].preMeasureStats = relatedRevision.preMeasureStats;
+                listAggregates[listName].postMeasureStats = relatedRevision.postMeasureStats;
+            }
         });
 
         const response = {
