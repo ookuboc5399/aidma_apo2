@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
                 label: `スクリプト: ${scriptName}`,
                 data: dataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
-                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}20`, // ランダムな色（透過）
+                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
                 type: 'bar',
                 fill: false,
             });
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
                 label: `リスト: ${listName}`,
                 data: dataPoints,
                 borderColor: `#${Math.floor(Math.random()*16777215).toString(16)}`, // ランダムな色
-                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}20`, // ランダムな色（透過）
+                backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
                 type: 'bar',
                 fill: false,
                 
