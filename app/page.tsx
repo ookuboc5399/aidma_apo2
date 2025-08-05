@@ -542,6 +542,7 @@ interface ChartDataSet {
 interface ChartDetailsResponse {
   revisions: CampaignRevision[];
   chartDataSets: ChartDataSet[];
+  statusChartDataSets: ChartDataSet[];
   totalAppointments: number;
   totalCalls: number;
   appointmentRate: string;
@@ -628,7 +629,7 @@ function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps)
 
         setChartData({
           labels: Array.from(new Set(data.chartDataSets.flatMap((dataset: ChartDataSet) => dataset.data.map((d: ChartDataPoint) => d.x)))).sort() as string[],
-          datasets: initialDatasets,
+          datasets: [...initialDatasets, ...data.statusChartDataSets],
           options: {
             plugins: {
               annotation: {
@@ -700,12 +701,13 @@ function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps)
         <button onClick={onBack} className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">戻る</button>
       </div>
       {chartData && (
+        <>
         <div className="flex flex-grow -mx-4">
           <div className="w-2/3 px-4 h-full">
             <div className="bg-white p-4 rounded-lg shadow-md h-full">
               <Chart 
                 type='bar'
-                data={chartData} 
+                data={{labels: chartData.labels, datasets: chartData.datasets.filter(d => d.label && !d.label.includes('受付拒否') && !d.label.includes('本人不在') && !d.label.includes('本人拒否') && !d.label.includes('本人資料請求') && !d.label.includes('不通') && !d.label.includes('対象者通話'))}} 
                 options={chartData.options} 
               />
             </div>
@@ -785,6 +787,43 @@ function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps)
             </div>
           </div>
         </div>
+        <div className="mt-8">
+            <h3 className="text-2xl font-bold mb-4">架電結果詳細</h3>
+            <div className="bg-white p-4 rounded-lg shadow-md">
+                <Chart 
+                    type='bar'
+                    data={{labels: chartData.labels, datasets: chartData.datasets.filter(d => d.label && (d.label.includes('受付拒否') || d.label.includes('本人不在') || d.label.includes('本人拒否') || d.label.includes('本人資料請求') || d.label.includes('不通') || d.label.includes('対象者通話')))}}
+                    options={{
+                        ...chartData.options,
+                        scales: {
+                            x: {
+                                type: 'time' as const,
+                                time: {
+                                    unit: 'day' as const
+                                }
+                            },
+                            y: {
+                                type: 'linear' as const,
+                                display: true,
+                                position: 'left' as const,
+                                title: {
+                                    display: true,
+                                    text: '件数'
+                                }
+                            }
+                        },
+                        plugins: {
+                            ...chartData.options.plugins,
+                            legend: {
+                                display: true,
+                                position: 'top' as const,
+                            }
+                        }
+                    }}
+                />
+            </div>
+        </div>
+        </>
       )}
     </div>
   )

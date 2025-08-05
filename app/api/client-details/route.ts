@@ -32,9 +32,20 @@ async function calculateAppointmentRate(client: string, filterValue: string, sta
     return { totalCalls: stats.totalCalls, totalAppointments: stats.appointments, appointmentRate: rate.toFixed(2) };
 }
 
+interface DailyStats {
+    totalCalls: number;
+    appointments: number;
+    refused_by_reception: number;
+    person_absent: number;
+    refused_by_person: number;
+    docs_by_person: number;
+    unreachable: number;
+    connected_target_count: number;
+}
+
 interface AggregatedDataType {
-    byScript: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
-    byList: { [key: string]: { [key: string]: { totalCalls: number; appointments: number } } };
+    byScript: { [key: string]: { [key: string]: DailyStats } };
+    byList: { [key: string]: { [key: string]: DailyStats } };
 }
 
 interface ChartDataSet {
@@ -75,7 +86,7 @@ export async function GET(req: NextRequest) {
         // 1. 日毎のアポ率データを取得
         const { data: dailyData, error: dailyError } = await supabase
             .from('call_results')
-            .select('operating_date, call_count, appointment, script_name, list_name') // list_nameも取得
+            .select('operating_date, call_count, appointment, script_name, list_name, refused_by_reception, person_absent, refused_by_person, docs_by_person, unreachable, connected_target_count')
             .eq('client_name', client)
             .gte('operating_date', startDate.toISOString())
             .lt('operating_date', endDate.toISOString())
@@ -98,25 +109,55 @@ export async function GET(req: NextRequest) {
                 acc.byScript[scriptName] = {};
             }
             if (!acc.byScript[scriptName][date]) {
-                acc.byScript[scriptName][date] = { totalCalls: 0, appointments: 0 };
+                acc.byScript[scriptName][date] = { totalCalls: 0, appointments: 0, refused_by_reception: 0, person_absent: 0, refused_by_person: 0, docs_by_person: 0, unreachable: 0, connected_target_count: 0 };
             }
             acc.byScript[scriptName][date].totalCalls += cur.call_count;
             acc.byScript[scriptName][date].appointments += cur.appointment;
+            acc.byScript[scriptName][date].refused_by_reception += cur.refused_by_reception;
+            acc.byScript[scriptName][date].person_absent += cur.person_absent;
+            acc.byScript[scriptName][date].refused_by_person += cur.refused_by_person;
+            acc.byScript[scriptName][date].docs_by_person += cur.docs_by_person;
+            acc.byScript[scriptName][date].unreachable += cur.unreachable;
+            acc.byScript[scriptName][date].connected_target_count += cur.connected_target_count;
 
             // list_nameごとの集計
             if (!acc.byList[listName]) {
                 acc.byList[listName] = {};
             }
             if (!acc.byList[listName][date]) {
-                acc.byList[listName][date] = { totalCalls: 0, appointments: 0 };
+                acc.byList[listName][date] = { totalCalls: 0, appointments: 0, refused_by_reception: 0, person_absent: 0, refused_by_person: 0, docs_by_person: 0, unreachable: 0, connected_target_count: 0 };
             }
             acc.byList[listName][date].totalCalls += cur.call_count;
             acc.byList[listName][date].appointments += cur.appointment;
+            acc.byList[listName][date].refused_by_reception += cur.refused_by_reception;
+            acc.byList[listName][date].person_absent += cur.person_absent;
+            acc.byList[listName][date].refused_by_person += cur.refused_by_person;
+            acc.byList[listName][date].docs_by_person += cur.docs_by_person;
+            acc.byList[listName][date].unreachable += cur.unreachable;
+            acc.byList[listName][date].connected_target_count += cur.connected_target_count;
 
             return acc;
         }, { byScript: {}, byList: {} });
 
         const chartDataSets: ChartDataSet[] = [];
+
+        const statusLabels: { [key: string]: string } = {
+            refused_by_reception: '受付拒否',
+            person_absent: '本人不在',
+            refused_by_person: '本人拒否',
+            docs_by_person: '本人資料請求',
+            unreachable: '不通',
+            connected_target_count: '対象者通話'
+        };
+
+        const statusColors: { [key: string]: { border: string; background: string } } = {
+            refused_by_reception: { border: '#FF6384', background: '#FF638480' },
+            person_absent: { border: '#36A2EB', background: '#36A2EB80' },
+            refused_by_person: { border: '#FFCE56', background: '#FFCE5680' },
+            docs_by_person: { border: '#4BC0C0', background: '#4BC0C080' },
+            unreachable: { border: '#9966FF', background: '#9966FF80' },
+            connected_target_count: { border: '#FF9F40', background: '#FF9F4080' }
+        };
 
         // script_nameごとのデータセットを生成
         Object.keys(aggregatedData.byScript).forEach(scriptName => {
@@ -177,6 +218,25 @@ export async function GET(req: NextRequest) {
                 backgroundColor: `#${Math.floor(Math.random()*16777215).toString(16)}80`, // ランダムな色（50%不透明）
                 type: 'bar', // 棒グラフ
                 fill: true, // 棒グラフなので塗りつぶし
+            });
+        });
+
+        const statusChartDataSets: ChartDataSet[] = [];
+        Object.keys(statusLabels).forEach(statusKey => {
+            const dataPoints = Object.keys(aggregatedData.byScript).flatMap(scriptName => 
+                Object.keys(aggregatedData.byScript[scriptName]).sort().map(date => ({
+                    x: date,
+                    y: (aggregatedData.byScript[scriptName][date][statusKey as keyof DailyStats] || 0).toString()
+                }))
+            );
+
+            statusChartDataSets.push({
+                label: statusLabels[statusKey],
+                data: dataPoints,
+                borderColor: statusColors[statusKey].border,
+                backgroundColor: statusColors[statusKey].background,
+                type: 'bar',
+                fill: true,
             });
         });
 
@@ -321,6 +381,7 @@ export async function GET(req: NextRequest) {
 
         const response = {
             chartDataSets,
+            statusChartDataSets,
             revisions,
             totalAppointments,
             totalCalls,
