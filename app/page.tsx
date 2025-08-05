@@ -147,40 +147,44 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center py-12 px-4 bg-purple-800 text-gray-800 relative">
-      <div className="w-full max-w-full bg-white shadow-lg rounded-lg p-8 flex flex-col flex-grow">
-        <h1 className="text-3xl font-extrabold text-gray-900 mb-8 text-center">施策効果測定ダッシュボード</h1>
-        <div className="absolute top-4 right-4">
-          <button 
-            onClick={async () => {
-              const supabase = createClient();
-              await supabase.auth.signOut();
-              window.location.href = '/login'; // ログアウト後にログインページへリダイレクト
-            }}
-            className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md shadow-md transition duration-200 ease-in-out cursor-pointer"
-          >
-            <LogOut className="h-5 w-5" />
-            <span>ログアウト</span>
-          </button>
-        </div>
+    <main className="min-h-screen bg-gray-100 text-gray-800">
+      <div className="w-full max-w-full mx-auto p-8">
+        <header className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800">施策効果測定ダッシュボード</h1>
+          <div className="flex items-center space-x-4">
+            <button 
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                window.location.href = '/login';
+              }}
+              className="flex items-center space-x-2 bg-white hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-300 transition duration-200 ease-in-out cursor-pointer"
+            >
+              <LogOut className="h-5 w-5" />
+              <span>ログアウト</span>
+            </button>
+          </div>
+        </header>
         
-        {currentView === 'summary' ? (
-          <MonthlySummary 
-            onClientSelect={handleClientSelect} 
-            month={month} 
-            setMonth={setMonth} 
-            summaryData={summaryData}
-            fetchSummary={fetchSummary}
-            onGenerateReportClick={() => setIsReportModalOpen(true)}
-          />
-        ) : selectedClient ? (
-          <ClientDetail 
-            client={selectedClient.clientName} 
-            month={month} 
-            onBack={handleBackToSummary} 
-            measureType={selectedClient.measureName} 
-          />
-        ) : null}
+        <div className="bg-white shadow-xl rounded-lg p-8">
+          {currentView === 'summary' ? (
+            <MonthlySummary 
+              onClientSelect={handleClientSelect} 
+              month={month} 
+              setMonth={setMonth} 
+              summaryData={summaryData}
+              fetchSummary={fetchSummary}
+              onGenerateReportClick={() => setIsReportModalOpen(true)}
+            />
+          ) : selectedClient ? (
+            <ClientDetail 
+              client={selectedClient.clientName} 
+              month={month} 
+              onBack={handleBackToSummary} 
+              measureType={selectedClient.measureName} 
+            />
+          ) : null}
+        </div>
       </div>
       
       <ReportModal 
@@ -341,64 +345,66 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
 
   return (
     <div>
-      <div className="flex items-end space-x-4 mb-6">
-        <input 
-          type="month" 
-          value={month} 
-          onChange={(e) => setMonth(e.target.value)} 
-          className="border border-gray-300 p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 ease-in-out"
-        />
-        <button onClick={fetchSummary} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md shadow-md transition duration-200 ease-in-out cursor-pointer">表示</button>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center space-x-4">
+          <input 
+            type="month" 
+            value={month} 
+            onChange={(e) => setMonth(e.target.value)} 
+            className="border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm text-base"
+          />
+          <button onClick={fetchSummary} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">表示</button>
+        </div>
         <button 
           onClick={onGenerateReportClick} 
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md shadow-md transition duration-200 ease-in-out text-sm cursor-pointer"
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
         >
           レポート生成
         </button>
       </div>
-      <div ref={scrollContainerRef} className="overflow-x-auto h-[calc(100vh-200px)] overflow-y-auto">
-        <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm border-separate border-spacing-0">
-          <thead className="sticky top-0 bg-gray-100 z-20">
-            <tr className="bg-gray-100 border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200 sticky left-0 bg-gray-100 z-10">クライアント</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">施策日</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">施策名</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">トーク改善 施策前 アポ率(%)</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">トーク改善 施策後 アポ率(%)</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">トーク改善 差分</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">不要データ削除 施策前 アポ率(%)</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">不要データ削除 施策後 アポ率(%)</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">不要データ削除 差分</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">トーク改善施策詳細</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border border-gray-200">不要データ削除施策詳細</th>
+      <div ref={scrollContainerRef} className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">クライアント</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">施策日</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">施策名</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">トーク改善 施策前 アポ率(%)</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">トーク改善 施策後 アポ率(%)</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">トーク改善 差分</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">不要データ削除 施策前 アポ率(%)</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">不要データ削除 施策後 アポ率(%)</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">不要データ削除 差分</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">トーク改善施策詳細</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">不要データ削除施策詳細</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white divide-y divide-gray-200">
             {summaryData.map((row, i) => {
               const displayClientName = row.client_name === lastClientName ? '' : row.client_name;
               lastClientName = row.client_name;
               return (
-                <tr key={i} onClick={() => onClientSelect(row.client_name, row.measure_name)} className="border-b border-gray-200 hover:bg-blue-50 cursor-pointer transition duration-150 ease-in-out">
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200 sticky left-0 bg-white">{displayClientName}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{new Date(row.execution_date).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.measure_name}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.talk_improvement_pre_rate !== null ? `${row.talk_improvement_pre_rate}%` : '-'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.talk_improvement_post_rate !== null ? `${row.talk_improvement_post_rate}%` : '-'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.talk_improvement_diff !== null ? `${row.talk_improvement_diff}%` : '-'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.data_deletion_pre_rate !== null ? `${row.data_deletion_pre_rate}%` : '-'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.data_deletion_post_rate !== null ? `${row.data_deletion_post_rate}%` : '-'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis border border-gray-200">{row.data_deletion_diff !== null ? `${row.data_deletion_diff}%` : '-'}</td>
-                  <td className="px-4 py-3 border border-gray-200">
+                <tr key={i} onClick={() => onClientSelect(row.client_name, row.measure_name)} className="hover:bg-gray-50 cursor-pointer transition-colors duration-150">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50">{displayClientName}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(row.execution_date).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.measure_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.talk_improvement_pre_rate !== null ? `${row.talk_improvement_pre_rate}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.talk_improvement_post_rate !== null ? `${row.talk_improvement_post_rate}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.talk_improvement_diff !== null ? `${row.talk_improvement_diff}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.data_deletion_pre_rate !== null ? `${row.data_deletion_pre_rate}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.data_deletion_post_rate !== null ? `${row.data_deletion_post_rate}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.data_deletion_diff !== null ? `${row.data_deletion_diff}%` : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {(row.pre_fix_talk_list_name || row.post_fix_talk_list_name) && (
-                      <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                      <div>
                         <span>修正前: {row.pre_fix_talk_list_name}</span><br/>
                         <span>修正後: {row.post_fix_talk_list_name}</span>
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 border border-gray-200">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {row.deleted_list_name && (
-                      <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                      <div>
                         <span>使用中リスト名: {row.deleted_list_name}</span>
                       </div>
                     )}
@@ -609,82 +615,94 @@ function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps)
 
   return (
     <div className="flex flex-col flex-grow">
-      <button onClick={onBack} className="mb-4 bg-gray-200 px-2 py-1 rounded text-sm inline-block">戻る</button>
-      <h2 className="text-xl font-bold mb-2">{client} - アポ率推移</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">{client} - アポ率推移</h2>
+        <button onClick={onBack} className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">戻る</button>
+      </div>
       {chartData && (
-        <div className="flex flex-grow">
-          <div className="w-2/3 h-full">
-            <Chart 
-              type='bar'
-              data={chartData} 
-              options={chartData.options} 
-            />
+        <div className="flex flex-grow -mx-4">
+          <div className="w-2/3 px-4 h-full">
+            <div className="bg-white p-4 rounded-lg shadow-md h-full">
+              <Chart 
+                type='bar'
+                data={chartData} 
+                options={chartData.options} 
+              />
+            </div>
           </div>
-          <div className="w-1/3 ml-4 p-4 border rounded-lg shadow-md bg-gray-50 overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-2">期間合計</h3>
-            <p><strong>合計アポイント数:</strong> {chartData.totalAppointments}</p>
-            <p><strong>合計架電数:</strong> {chartData.totalCalls}</p>
-            <p><strong>アポ率:</strong> {chartData.appointmentRate}%</p>
-
-            {(measureType === 'トーク改善' || measureType === '両方実施') && chartData.scriptAggregates && Object.keys(chartData.scriptAggregates).length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-300">
-                <h4 className="text-md font-semibold mb-2">スクリプト別集計</h4>
-                {Object.entries(chartData.scriptAggregates).map(([scriptName, metrics]) => (
-                  <div key={scriptName} className="mb-2 p-2 border border-gray-200 rounded-md bg-white">
-                    <p><strong>{scriptName}:</strong></p>
-                    <p className="ml-2">アポイント数: {metrics.totalAppointments}</p>
-                    <p className="ml-2">架電数: {metrics.totalCalls}</p>
-                    <p className="ml-2">アポ率: {metrics.appointmentRate}%</p>
-                    {metrics.preMeasureStats && (
-                      <div className="ml-2 mt-2">
-                        <p className="font-semibold">施策前 ({new Date(metrics.preMeasureStats.execution_date).toLocaleDateString()}まで):</p>
-                        <p className="ml-2">アポイント数: {metrics.preMeasureStats.totalAppointments}</p>
-                        <p className="ml-2">架電数: {metrics.preMeasureStats.totalCalls}</p>
-                        <p className="ml-2">アポ率: {metrics.preMeasureStats.appointmentRate}%</p>
-                      </div>
-                    )}
-                    {metrics.postMeasureStats && (
-                      <div className="ml-2 mt-2">
-                        <p className="font-semibold">施策後 ({new Date(metrics.postMeasureStats.execution_date).toLocaleDateString()}から):</p>
-                        <p className="ml-2">アポイント数: {metrics.postMeasureStats.totalAppointments}</p>
-                        <p className="ml-2">架電数: {metrics.postMeasureStats.totalCalls}</p>
-                        <p className="ml-2">アポ率: {metrics.postMeasureStats.appointmentRate}%</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+          <div className="w-1/3 px-4">
+            <div className="bg-gray-50 p-4 rounded-lg shadow-inner h-full overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-300">期間合計</h3>
+              <div className="space-y-2 mb-4">
+                <p><strong>合計アポイント数:</strong> {chartData.totalAppointments}</p>
+                <p><strong>合計架電数:</strong> {chartData.totalCalls}</p>
+                <p><strong>アポ率:</strong> {chartData.appointmentRate}%</p>
               </div>
-            )}
 
-            {(measureType === '不要データ削除' || measureType === '両方実施') && chartData.listAggregates && Object.keys(chartData.listAggregates).length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-300">
-                <h4 className="text-md font-semibold mb-2">リスト別集計</h4>
-                {Object.entries(chartData.listAggregates).map(([listName, metrics]) => (
-                  <div key={listName} className="mb-2 p-2 border border-gray-200 rounded-md bg-white">
-                    <p><strong>{listName}:</strong></p>
-                    <p className="ml-2">アポイント数: {metrics.totalAppointments}</p>
-                    <p className="ml-2">架電数: {metrics.totalCalls}</p>
-                    <p className="ml-2">アポ率: {metrics.appointmentRate}%</p>
-                    {metrics.preMeasureStats && (
-                      <div className="ml-2 mt-2">
-                        <p className="font-semibold">施策前 ({new Date(metrics.preMeasureStats.execution_date).toLocaleDateString()}まで):</p>
-                        <p className="ml-2">アポイント数: {metrics.preMeasureStats.totalAppointments}</p>
-                        <p className="ml-2">架電数: {metrics.preMeasureStats.totalCalls}</p>
-                        <p className="ml-2">アポ率: {metrics.preMeasureStats.appointmentRate}%</p>
+              {(measureType === 'トーク改善' || measureType === '両方実施') && chartData.scriptAggregates && Object.keys(chartData.scriptAggregates).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-300">
+                  <h4 className="text-md font-semibold mb-2">スクリプト別集計</h4>
+                  {Object.entries(chartData.scriptAggregates).map(([scriptName, metrics]) => (
+                    <div key={scriptName} className="mb-3 p-3 border border-gray-200 rounded-lg bg-white shadow-sm">
+                      <p className="font-bold text-gray-700">{scriptName}:</p>
+                      <div className="pl-2 mt-1 space-y-1 text-sm">
+                        <p>アポイント数: {metrics.totalAppointments}</p>
+                        <p>架電数: {metrics.totalCalls}</p>
+                        <p>アポ率: {metrics.appointmentRate}%</p>
+                        {metrics.preMeasureStats && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="font-semibold text-xs text-gray-500">施策前 ({new Date(metrics.preMeasureStats.execution_date).toLocaleDateString()}まで):</p>
+                            <p className="pl-2">アポイント数: {metrics.preMeasureStats.totalAppointments}</p>
+                            <p className="pl-2">架電数: {metrics.preMeasureStats.totalCalls}</p>
+                            <p className="pl-2">アポ率: {metrics.preMeasureStats.appointmentRate}%</p>
+                          </div>
+                        )}
+                        {metrics.postMeasureStats && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="font-semibold text-xs text-gray-500">施策後 ({new Date(metrics.postMeasureStats.execution_date).toLocaleDateString()}から):</p>
+                            <p className="pl-2">アポイント数: {metrics.postMeasureStats.totalAppointments}</p>
+                            <p className="pl-2">架電数: {metrics.postMeasureStats.totalCalls}</p>
+                            <p className="pl-2">アポ率: {metrics.postMeasureStats.appointmentRate}%</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {metrics.postMeasureStats && (
-                      <div className="ml-2 mt-2">
-                        <p className="font-semibold">施策後 ({new Date(metrics.postMeasureStats.execution_date).toLocaleDateString()}から):</p>
-                        <p className="ml-2">アポイント数: {metrics.postMeasureStats.totalAppointments}</p>
-                        <p className="ml-2">架電数: {metrics.postMeasureStats.totalCalls}</p>
-                        <p className="ml-2">アポ率: {metrics.postMeasureStats.appointmentRate}%</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(measureType === '不要データ削除' || measureType === '両方実施') && chartData.listAggregates && Object.keys(chartData.listAggregates).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-300">
+                  <h4 className="text-md font-semibold mb-2">リスト別集計</h4>
+                  {Object.entries(chartData.listAggregates).map(([listName, metrics]) => (
+                    <div key={listName} className="mb-3 p-3 border border-gray-200 rounded-lg bg-white shadow-sm">
+                      <p className="font-bold text-gray-700">{listName}:</p>
+                      <div className="pl-2 mt-1 space-y-1 text-sm">
+                        <p>アポイント数: {metrics.totalAppointments}</p>
+                        <p>架電数: {metrics.totalCalls}</p>
+                        <p>アポ率: {metrics.appointmentRate}%</p>
+                        {metrics.preMeasureStats && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="font-semibold text-xs text-gray-500">施策前 ({new Date(metrics.preMeasureStats.execution_date).toLocaleDateString()}まで):</p>
+                            <p className="pl-2">アポイント数: {metrics.preMeasureStats.totalAppointments}</p>
+                            <p className="pl-2">架電数: {metrics.preMeasureStats.totalCalls}</p>
+                            <p className="pl-2">アポ率: {metrics.preMeasureStats.appointmentRate}%</p>
+                          </div>
+                        )}
+                        {metrics.postMeasureStats && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="font-semibold text-xs text-gray-500">施策後 ({new Date(metrics.postMeasureStats.execution_date).toLocaleDateString()}から):</p>
+                            <p className="pl-2">アポイント数: {metrics.postMeasureStats.totalAppointments}</p>
+                            <p className="pl-2">架電数: {metrics.postMeasureStats.totalCalls}</p>
+                            <p className="pl-2">アポ率: {metrics.postMeasureStats.appointmentRate}%</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
