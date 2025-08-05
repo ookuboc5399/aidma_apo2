@@ -291,7 +291,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   annotationPlugin,
-  LineController,   // ← これを登録！
+  LineController, 
   BarController 
 )
 

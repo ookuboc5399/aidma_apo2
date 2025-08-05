@@ -5,8 +5,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-async function calculateAppointmentRate(client: string, filterValue: string, startDate: string, endDate: string, filterColumn: 'script_name' | 'list_name') {
-    console.log(`[calculateAppointmentRate] Querying call_results for client: ${client}, ${filterColumn}: ${filterValue}, operating_date from ${startDate} to ${endDate}`);
+async function calculateAppointmentRate(client: string, filterValue: string, startDate: string, endDate: string, filterColumn: 'script_name' | 'list_name'): Promise<number | null> {
     const { data, error } = await supabase
         .from('call_results')
         .select('call_count, appointment')
@@ -16,10 +15,13 @@ async function calculateAppointmentRate(client: string, filterValue: string, sta
         .lt('operating_date', endDate)
 
     if (error) {
-        console.error('[calculateAppointmentRate] Error fetching call_results:', error);
-        throw error;
+        console.error(`Error fetching call_results for ${client} and ${filterValue}:`, error);
+        return null;
     }
-    console.log('[calculateAppointmentRate] Fetched call_results data:', data);
+
+    if (!data || data.length === 0) {
+        return null;
+    }
 
     const stats = data.reduce((acc, cur) => {
         acc.totalCalls += cur.call_count;
@@ -27,8 +29,11 @@ async function calculateAppointmentRate(client: string, filterValue: string, sta
         return acc;
     }, { totalCalls: 0, appointments: 0 });
 
-    const rate = stats.totalCalls > 0 ? (stats.appointments / stats.totalCalls) * 100 : 0;
-    return rate;
+    if (stats.totalCalls === 0) {
+        return null;
+    }
+
+    return (stats.appointments / stats.totalCalls) * 100;
 }
 
 export async function GET(req: NextRequest) {
@@ -50,41 +55,36 @@ export async function GET(req: NextRequest) {
             .lt('execution_date', endDate);
 
         if (revisionsError) throw revisionsError;
-        console.log('Fetched campaign_revisions:', revisions);
 
         const summaryData = await Promise.all(revisions.map(async (rev) => {
             const executionDate = new Date(rev.execution_date);
-            const preStartDate = new Date(executionDate.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30日前
-            const postEndDate = new Date(executionDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30日後
+            const monthStartDate = new Date(executionDate.getFullYear(), executionDate.getMonth(), 1).toISOString();
+            const monthEndDate = new Date(executionDate.getFullYear(), executionDate.getMonth() + 1, 1).toISOString();
 
-            let talkImprovementPreRate = null;
-            let talkImprovementPostRate = null;
-            let talkImprovementDiff = null;
+            let talkImprovementPreRate: number | null = null;
+            let talkImprovementPostRate: number | null = null;
+            let talkImprovementDiff: string | null = null;
+            let dataDeletionPreRate: number | null = null;
+            let dataDeletionPostRate: number | null = null;
+            let dataDeletionDiff: string | null = null;
 
-            if (rev.pre_fix_talk_list_name && rev.post_fix_talk_list_name) {
-                try {
-                    talkImprovementPreRate = await calculateAppointmentRate(rev.client_name, rev.pre_fix_talk_list_name, preStartDate, rev.execution_date, 'script_name');
-                    talkImprovementPostRate = await calculateAppointmentRate(rev.client_name, rev.post_fix_talk_list_name, rev.execution_date, postEndDate, 'script_name');
-                    talkImprovementDiff = (talkImprovementPostRate - talkImprovementPreRate).toFixed(2);
-                } catch (e) {
-                    console.error(`Error calculating talk improvement rates for ${rev.client_name}:`, e);
-                }
+            // トーク改善のアポ率計算
+            if (rev.pre_fix_talk_list_name) {
+                talkImprovementPreRate = await calculateAppointmentRate(rev.client_name, rev.pre_fix_talk_list_name, monthStartDate, rev.execution_date, 'script_name');
+            }
+            if (rev.post_fix_talk_list_name) {
+                talkImprovementPostRate = await calculateAppointmentRate(rev.client_name, rev.post_fix_talk_list_name, rev.execution_date, monthEndDate, 'script_name');
+            }
+            if (talkImprovementPreRate !== null && talkImprovementPostRate !== null) {
+                talkImprovementDiff = (talkImprovementPostRate - talkImprovementPreRate).toFixed(2);
             }
 
-            let dataDeletionPreRate = null;
-            let dataDeletionPostRate = null;
-            let dataDeletionDiff = null;
-
+            // 不要データ削除のアポ率計算
             if (rev.deleted_list_name) {
-                try {
-                    // 不要データ削除の施策前後のアポ率計算
-                    // 施策前: deleted_list_nameのリスト名で、execution_date以前のデータ
-                    dataDeletionPreRate = await calculateAppointmentRate(rev.client_name, rev.deleted_list_name, preStartDate, rev.execution_date, 'list_name');
-                    // 施策後: deleted_list_nameのリスト名で、execution_date以降のデータ
-                    dataDeletionPostRate = await calculateAppointmentRate(rev.client_name, rev.deleted_list_name, rev.execution_date, postEndDate, 'list_name');
+                dataDeletionPreRate = await calculateAppointmentRate(rev.client_name, rev.deleted_list_name, monthStartDate, rev.execution_date, 'list_name');
+                dataDeletionPostRate = await calculateAppointmentRate(rev.client_name, rev.deleted_list_name, rev.execution_date, monthEndDate, 'list_name');
+                if (dataDeletionPreRate !== null && dataDeletionPostRate !== null) {
                     dataDeletionDiff = (dataDeletionPostRate - dataDeletionPreRate).toFixed(2);
-                } catch (e) {
-                    console.error(`Error calculating data deletion rates for ${rev.client_name}:`, e);
                 }
             }
 
