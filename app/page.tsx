@@ -252,7 +252,7 @@ export default function Home() {
   )
 }
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic'
 import { LogOut } from 'lucide-react';
@@ -330,8 +330,45 @@ interface MonthlySummaryProps {
 }
 
 function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSummary, onGenerateReportClick }: MonthlySummaryProps) {
+  const [dateFilter, setDateFilter] = useState('');
+  const [measureFilter, setMeasureFilter] = useState('');
+  const [hideNullRates, setHideNullRates] = useState(false);
   let lastClientName: string | null = null;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const { measureNames, executionDates } = useMemo(() => {
+    const measures = new Set<string>();
+    const dates = new Set<string>();
+    summaryData.forEach(item => {
+      measures.add(item.measure_name);
+      // Format date to YYYY-MM-DD for consistent filtering
+      const d = new Date(item.execution_date);
+      const a = d.toLocaleDateString('sv-SE'); // Gets YYYY-MM-DD
+      dates.add(a);
+    });
+    return {
+      measureNames: ['', ...Array.from(measures)],
+      executionDates: ['', ...Array.from(dates).sort((a, b) => b.localeCompare(a))],
+    };
+  }, [summaryData]);
+
+  const filteredData = useMemo(() => {
+    return summaryData.filter(item => {
+      const itemDate = new Date(item.execution_date).toLocaleDateString('sv-SE');
+      const dateMatch = !dateFilter || itemDate === dateFilter;
+      const measureMatch = !measureFilter || item.measure_name === measureFilter;
+      
+      const hasData = 
+        item.talk_improvement_post_rate !== null ||
+        item.talk_improvement_diff !== null ||
+        item.data_deletion_post_rate !== null ||
+        item.data_deletion_diff !== null;
+      const nullRateMatch = !hideNullRates || hasData;
+
+      return dateMatch && measureMatch && nullRateMatch;
+    });
+  }, [summaryData, dateFilter, measureFilter, hideNullRates]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -362,6 +399,49 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
           レポート生成
         </button>
       </div>
+
+      {/* Filters */}
+      <div className="flex items-center space-x-4 mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center space-x-2">
+          <label htmlFor="date-filter" className="text-sm font-medium text-gray-700">施策日:</label>
+          <select
+            id="date-filter"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm text-base pr-8"
+          >
+            {executionDates.map(date => (
+              <option key={date} value={date}>{date || 'すべて'}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center space-x-2">
+          <label htmlFor="measure-filter" className="text-sm font-medium text-gray-700">施策名:</label>
+          <select
+            id="measure-filter"
+            value={measureFilter}
+            onChange={(e) => setMeasureFilter(e.target.value)}
+            className="border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm text-base pr-8"
+          >
+            {measureNames.map(name => (
+              <option key={name} value={name}>{name || 'すべて'}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center pl-4">
+            <input
+                id="hide-null-rates"
+                type="checkbox"
+                checked={hideNullRates}
+                onChange={(e) => setHideNullRates(e.target.checked)}
+                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+            />
+            <label htmlFor="hide-null-rates" className="ml-2 block text-sm text-gray-900">
+                データなしの行を隠す
+            </label>
+        </div>
+      </div>
+
       <div ref={scrollContainerRef} className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -380,7 +460,7 @@ function MonthlySummary({ onClientSelect, month, setMonth, summaryData, fetchSum
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {summaryData.map((row, i) => {
+            {filteredData.map((row, i) => {
               const displayClientName = row.client_name === lastClientName ? '' : row.client_name;
               lastClientName = row.client_name;
               return (
