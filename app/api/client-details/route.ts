@@ -4,10 +4,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { LRUCache } from 'lru-cache'
 
 
+interface RevisionStats {
+    totalCalls: number;
+    totalAppointments: number;
+    appointmentRate: string;
+}
+
+interface Revision {
+    execution_date: string;
+    measure_name: string;
+    preMeasureStats: RevisionStats | null;
+    postMeasureStats: RevisionStats | null;
+    pre_fix_talk_list_name: string | null;
+    post_fix_talk_list_name: string | null;
+    deleted_list_name: string | null;
+    preTalkListPostMeasureStats: RevisionStats | null;
+}
+
 interface CacheData {
     chartDataSets: ChartDataSet[];
     statusChartDataSets: ChartDataSet[];
-    revisions: any[];
+    revisions: Revision[];
     totalAppointments: number;
     totalCalls: number;
     appointmentRate: string;
