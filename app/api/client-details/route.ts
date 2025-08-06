@@ -1,6 +1,25 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { LRUCache } from 'lru-cache'
+
+
+interface CacheData {
+    chartDataSets: ChartDataSet[];
+    statusChartDataSets: ChartDataSet[];
+    revisions: any[];
+    totalAppointments: number;
+    totalCalls: number;
+    appointmentRate: string;
+    scriptAggregates: AggregatesType;
+    listAggregates: AggregatesType;
+}
+
+const cache = new LRUCache<string, CacheData>({
+    max: 100, // キャッシュするエントリの最大数
+    ttl: 1000 * 60 * 5, // 5分間キャッシュを保持 (ミリ秒)
+});
+
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
@@ -10,7 +29,7 @@ async function calculateAppointmentRate(client: string, filterValue: string, sta
     console.log(`[calculateAppointmentRate] Querying call_results for client: ${client}, ${filterColumn}: ${filterValue}, operating_date from ${startDate} to ${endDate}`);
     const { data, error } = await supabase
         .from('call_results')
-        .select('call_count, appointment')
+        .select('total, appointment')
         .eq('client_name', client)
         .eq(filterColumn, filterValue)
         .gte('operating_date', startDate)
@@ -23,7 +42,7 @@ async function calculateAppointmentRate(client: string, filterValue: string, sta
     console.log('[calculateAppointmentRate] Fetched call_results data:', data);
 
     const stats = data.reduce((acc, cur) => {
-        acc.totalCalls += cur.call_count;
+        acc.totalCalls += cur.total;
         acc.appointments += cur.appointment;
         return acc;
     }, { totalCalls: 0, appointments: 0 });
@@ -79,6 +98,13 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Client and month are required' }, { status: 400 });
         }
 
+        const cacheKey = `${client}-${month}`;
+        const cachedResponse = cache.get(cacheKey);
+        if (cachedResponse) {
+            console.log(`[client-details] Cache hit for ${cacheKey}`);
+            return NextResponse.json(cachedResponse);
+        }
+
         const startDate = new Date(`${month}-01T00:00:00Z`);
         const endDate = new Date(new Date(startDate).setMonth(startDate.getMonth() + 1));
 
@@ -86,7 +112,7 @@ export async function GET(req: NextRequest) {
         // 1. 日毎のアポ率データを取得
         const { data: dailyData, error: dailyError } = await supabase
             .from('call_results')
-            .select('operating_date, call_count, appointment, script_name, list_name, refused_by_reception, person_absent, refused_by_person, docs_by_person, unreachable, connected_target_count')
+            .select('operating_date, total, appointment, script_name, list_name, refused_by_reception, person_absent, refused_by_person, docs_by_person, unreachable, connected_target_count')
             .eq('client_name', client)
             .gte('operating_date', startDate.toISOString())
             .lt('operating_date', endDate.toISOString())
@@ -111,7 +137,7 @@ export async function GET(req: NextRequest) {
             if (!acc.byScript[scriptName][date]) {
                 acc.byScript[scriptName][date] = { totalCalls: 0, appointments: 0, refused_by_reception: 0, person_absent: 0, refused_by_person: 0, docs_by_person: 0, unreachable: 0, connected_target_count: 0 };
             }
-            acc.byScript[scriptName][date].totalCalls += cur.call_count;
+            acc.byScript[scriptName][date].totalCalls += cur.total;
             acc.byScript[scriptName][date].appointments += cur.appointment;
             acc.byScript[scriptName][date].refused_by_reception += cur.refused_by_reception;
             acc.byScript[scriptName][date].person_absent += cur.person_absent;
@@ -127,7 +153,7 @@ export async function GET(req: NextRequest) {
             if (!acc.byList[listName][date]) {
                 acc.byList[listName][date] = { totalCalls: 0, appointments: 0, refused_by_reception: 0, person_absent: 0, refused_by_person: 0, docs_by_person: 0, unreachable: 0, connected_target_count: 0 };
             }
-            acc.byList[listName][date].totalCalls += cur.call_count;
+            acc.byList[listName][date].totalCalls += cur.total;
             acc.byList[listName][date].appointments += cur.appointment;
             acc.byList[listName][date].refused_by_reception += cur.refused_by_reception;
             acc.byList[listName][date].person_absent += cur.person_absent;
@@ -267,6 +293,7 @@ export async function GET(req: NextRequest) {
 
             let preMeasureStats = null;
             let postMeasureStats = null;
+            let preTalkListPostMeasureStats = null;
 
             if (measure_name === 'トーク改善' || measure_name === '両方実施') {
                 // トーク改善の施策前後のアポ率計算
@@ -282,6 +309,15 @@ export async function GET(req: NextRequest) {
                 postMeasureStats = await calculateAppointmentRate(
                     rev.client_name,
                     rev.post_fix_talk_list_name || '',
+                    executionDate.toISOString(),
+                    monthEndDate.toISOString(),
+                    'script_name'
+                );
+
+                // pre_fix_talk_list_nameに対する施策後の統計情報も計算
+                preTalkListPostMeasureStats = await calculateAppointmentRate(
+                    rev.client_name,
+                    rev.pre_fix_talk_list_name || '',
                     executionDate.toISOString(),
                     monthEndDate.toISOString(),
                     'script_name'
@@ -314,11 +350,12 @@ export async function GET(req: NextRequest) {
                 pre_fix_talk_list_name: rev.pre_fix_talk_list_name,
                 post_fix_talk_list_name: rev.post_fix_talk_list_name,
                 deleted_list_name: rev.deleted_list_name,
+                preTalkListPostMeasureStats: preTalkListPostMeasureStats, // 追加
             };
         }));
 
         const totalAppointments = dailyData.reduce((sum, cur) => sum + cur.appointment, 0);
-        const totalCalls = dailyData.reduce((sum, cur) => sum + cur.call_count, 0);
+        const totalCalls = dailyData.reduce((sum, cur) => sum + cur.total, 0);
         const appointmentRate = totalCalls > 0 ? ((totalAppointments / totalCalls) * 100).toFixed(2) : '0.00';
 
         const scriptAggregates: AggregatesType = {};
@@ -345,6 +382,8 @@ export async function GET(req: NextRequest) {
             if (relatedRevision) {
                 if (relatedRevision.pre_fix_talk_list_name === scriptName) {
                     scriptAggregates[scriptName].preMeasureStats = relatedRevision.preMeasureStats;
+                    // pre_fix_talk_list_nameに対する施策後の統計情報を追加
+                    scriptAggregates[scriptName].postMeasureStats = relatedRevision.preTalkListPostMeasureStats;
                 }
                 if (relatedRevision.post_fix_talk_list_name === scriptName) {
                     scriptAggregates[scriptName].postMeasureStats = relatedRevision.postMeasureStats;
@@ -390,7 +429,7 @@ export async function GET(req: NextRequest) {
             listAggregates,
         };
         console.log('Final client-details response:', response);
-
+        cache.set(cacheKey, response);
         return NextResponse.json(response);
 
     } catch (error) {

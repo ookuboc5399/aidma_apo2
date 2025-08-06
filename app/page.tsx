@@ -523,6 +523,12 @@ interface AggregatesType {
       totalAppointments: number;
       appointmentRate: string;
     };
+    preTalkListPostMeasureStats?: {
+      execution_date: string;
+      totalCalls: number;
+      totalAppointments: number;
+      appointmentRate: string;
+    }; // 追加
   };
 }
 
@@ -570,6 +576,11 @@ interface CampaignRevision {
   pre_fix_talk_list_name: string | null;
   post_fix_talk_list_name: string | null;
   deleted_list_name: string | null;
+  preTalkListPostMeasureStats?: {
+    totalCalls: number;
+    totalAppointments: number;
+    appointmentRate: string;
+  } | null;
 }
 
 function ClientDetail({ client, month, onBack, measureType }: ClientDetailProps) {
